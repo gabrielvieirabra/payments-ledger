@@ -1,0 +1,6 @@
+{
+  "from_account_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "to_account_id": "ffffffff-1111-2222-3333-444444444444",
+  "amount": 1500,
+  "currency": "BRL"
+}
