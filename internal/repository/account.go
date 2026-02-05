@@ -2,14 +2,18 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gabrielvieirabra/payments-ledger/internal/domain"
 )
+
+var ErrAccountHasReferences = errors.New("account has existing entries or transactions")
 
 type AccountRepository struct {
 	pool *pgxpool.Pool
@@ -94,6 +98,10 @@ func (r *AccountRepository) List(ctx context.Context, params domain.ListAccounts
 func (r *AccountRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	result, err := r.pool.Exec(ctx, `DELETE FROM accounts WHERE id = $1`, id)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return ErrAccountHasReferences
+		}
 		return fmt.Errorf("delete account: %w", err)
 	}
 	if result.RowsAffected() == 0 {

@@ -10,15 +10,17 @@ import (
 )
 
 type Config struct {
-	AppName        string
-	Environment    string
-	Port           int
-	LogLevelStr    string
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
-	IdleTimeout    time.Duration
-	DatabaseURL    string
-	MigrationsPath string
+	AppName         string
+	Environment     string
+	Port            int
+	LogLevelStr     string
+	ReadTimeout     time.Duration
+	WriteTimeout    time.Duration
+	IdleTimeout     time.Duration
+	DatabaseURL     string
+	MigrationsPath  string
+	WorkerPoolSize  int
+	WorkerQueueSize int
 }
 
 func Load() (*Config, error) {
@@ -28,15 +30,17 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		AppName:        getEnv("APP_NAME", "payments-ledger"),
-		Environment:    getEnv("ENVIRONMENT", "development"),
-		Port:           port,
-		LogLevelStr:    getEnv("LOG_LEVEL", "info"),
-		ReadTimeout:    parseDuration("READ_TIMEOUT", "5s"),
-		WriteTimeout:   parseDuration("WRITE_TIMEOUT", "10s"),
-		IdleTimeout:    parseDuration("IDLE_TIMEOUT", "120s"),
-		DatabaseURL:    getEnv("DATABASE_URL", ""),
-		MigrationsPath: getEnv("MIGRATIONS_PATH", "migrations"),
+		AppName:         getEnv("APP_NAME", "payments-ledger"),
+		Environment:     getEnv("ENVIRONMENT", "development"),
+		Port:            port,
+		LogLevelStr:     getEnv("LOG_LEVEL", "info"),
+		ReadTimeout:     parseDuration("READ_TIMEOUT", "5s"),
+		WriteTimeout:    parseDuration("WRITE_TIMEOUT", "10s"),
+		IdleTimeout:     parseDuration("IDLE_TIMEOUT", "120s"),
+		DatabaseURL:     getEnv("DATABASE_URL", ""),
+		MigrationsPath:  getEnv("MIGRATIONS_PATH", "migrations"),
+		WorkerPoolSize:  parseInt("WORKER_POOL_SIZE", 10),
+		WorkerQueueSize: parseInt("WORKER_QUEUE_SIZE", 100),
 	}
 
 	return cfg, nil
@@ -53,6 +57,18 @@ func (c *Config) LogLevel() slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+func parseInt(envKey string, fallback int) int {
+	raw := getEnv(envKey, "")
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return v
 }
 
 func getEnv(key, fallback string) string {

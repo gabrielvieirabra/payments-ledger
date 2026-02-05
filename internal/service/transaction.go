@@ -11,6 +11,7 @@ import (
 
 	"github.com/gabrielvieirabra/payments-ledger/internal/domain"
 	"github.com/gabrielvieirabra/payments-ledger/internal/repository"
+	"github.com/gabrielvieirabra/payments-ledger/internal/worker"
 )
 
 var (
@@ -24,17 +25,20 @@ type TransactionService struct {
 	accountRepo     *repository.AccountRepository
 	entryRepo       *repository.EntryRepository
 	transactionRepo *repository.TransactionRepository
+	pool            *worker.Pool
 }
 
 func NewTransactionService(
 	accountRepo *repository.AccountRepository,
 	entryRepo *repository.EntryRepository,
 	transactionRepo *repository.TransactionRepository,
+	pool *worker.Pool,
 ) *TransactionService {
 	return &TransactionService{
 		accountRepo:     accountRepo,
 		entryRepo:       entryRepo,
 		transactionRepo: transactionRepo,
+		pool:            pool,
 	}
 }
 
@@ -43,6 +47,31 @@ func (s *TransactionService) Transfer(ctx context.Context, req domain.CreateTran
 		return domain.TransactionResult{}, ErrSameAccount
 	}
 
+	var result domain.TransactionResult
+	var execErr error
+
+	errCh := make(chan error, 1)
+	cmd := worker.Command{
+		AccountID: req.FromAccountID,
+		Exec: func(workerCtx context.Context) error {
+			result, execErr = s.transferDirect(ctx, req)
+			return execErr
+		},
+		Err: errCh,
+	}
+
+	if err := s.pool.Submit(cmd); err != nil {
+		return domain.TransactionResult{}, fmt.Errorf("submit transfer command: %w", err)
+	}
+
+	if err := <-errCh; err != nil {
+		return domain.TransactionResult{}, err
+	}
+
+	return result, nil
+}
+
+func (s *TransactionService) transferDirect(ctx context.Context, req domain.CreateTransactionRequest) (domain.TransactionResult, error) {
 	fromAcc, err := s.accountRepo.GetByID(ctx, req.FromAccountID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -80,15 +109,23 @@ func (s *TransactionService) Transfer(ctx context.Context, req domain.CreateTran
 		id1, id2 = id2, id1
 	}
 
-	if _, err = s.accountRepo.GetByIDForUpdate(ctx, tx, id1); err != nil {
+	// Lock both accounts; use the locked row for balance check
+	locked1, err := s.accountRepo.GetByIDForUpdate(ctx, tx, id1)
+	if err != nil {
 		return domain.TransactionResult{}, err
 	}
-	if _, err = s.accountRepo.GetByIDForUpdate(ctx, tx, id2); err != nil {
+	locked2, err := s.accountRepo.GetByIDForUpdate(ctx, tx, id2)
+	if err != nil {
 		return domain.TransactionResult{}, err
 	}
 
-	// Check sufficient balance
-	if fromAcc.Balance < req.Amount {
+	// Determine which locked row is the source account
+	lockedFrom := locked1
+	if id1 != req.FromAccountID {
+		lockedFrom = locked2
+	}
+
+	if lockedFrom.Balance < req.Amount {
 		return domain.TransactionResult{}, ErrInsufficientBalance
 	}
 

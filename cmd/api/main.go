@@ -15,6 +15,7 @@ import (
 	"github.com/gabrielvieirabra/payments-ledger/internal/config"
 	"github.com/gabrielvieirabra/payments-ledger/internal/database"
 	"github.com/gabrielvieirabra/payments-ledger/internal/handler"
+	"github.com/gabrielvieirabra/payments-ledger/internal/worker"
 )
 
 func main() {
@@ -46,7 +47,10 @@ func main() {
 	}
 	defer pool.Close()
 
-	router := handler.NewRouter(pool)
+	wp := worker.NewPool(cfg.WorkerPoolSize, cfg.WorkerQueueSize)
+	defer wp.Shutdown()
+
+	router := handler.NewRouter(pool, wp)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),

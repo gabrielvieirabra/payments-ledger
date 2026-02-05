@@ -12,7 +12,10 @@ import (
 	"github.com/gabrielvieirabra/payments-ledger/internal/repository"
 )
 
-var ErrAccountNotFound = errors.New("account not found")
+var (
+	ErrAccountNotFound      = errors.New("account not found")
+	ErrAccountHasReferences = errors.New("account has existing entries or transactions")
+)
 
 type AccountService struct {
 	repo *repository.AccountRepository
@@ -46,6 +49,9 @@ func (s *AccountService) Delete(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrAccountNotFound
+		}
+		if errors.Is(err, repository.ErrAccountHasReferences) {
+			return ErrAccountHasReferences
 		}
 		return fmt.Errorf("delete account: %w", err)
 	}

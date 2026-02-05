@@ -87,6 +87,10 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
 			return
 		}
+		if errors.Is(err, service.ErrAccountHasReferences) {
+			c.JSON(http.StatusConflict, gin.H{"error": "account has existing entries or transactions"})
+			return
+		}
 		slog.Error("failed to delete account", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete account"})
 		return
